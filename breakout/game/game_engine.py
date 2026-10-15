@@ -29,17 +29,38 @@ class GameEngine:
         self.paddle = Paddle(x=WIDTH / 2, y=HEIGHT - 30)
         self.ball = Ball(x=WIDTH / 2, y=HEIGHT - 50)
         self.bricks = self._build_bricks()
+        self.lives = 3
+        self.game_over = False
+        self.score = 0
+        self.combo = 0
+        self.combo_multiplier = 1
 
+    
     def _build_bricks(self):
         bricks = []
         total_width = BRICK_COLS * (BRICK_WIDTH + BRICK_GAP) - BRICK_GAP
         start_x = (WIDTH - total_width) / 2
+
         for row in range(BRICK_ROWS):
             for col in range(BRICK_COLS):
                 x = start_x + col * (BRICK_WIDTH + BRICK_GAP)
                 y = BRICK_TOP_MARGIN + row * (BRICK_HEIGHT + BRICK_GAP)
-                bricks.append(Brick(x, y, BRICK_WIDTH, BRICK_HEIGHT))
+
+                position = row * BRICK_COLS + col
+
+                if position % 10 == 9:
+                    brick_type = "unbreakable"
+                elif position % 3 == 0:
+                    brick_type = "strong"
+                else:
+                    brick_type = "normal"
+
+                bricks.append(
+                    Brick(x, y, BRICK_WIDTH, BRICK_HEIGHT, brick_type)
+                )
+
         return bricks
+
 
     def _reset_ball(self):
         self.ball = Ball(x=WIDTH / 2, y=HEIGHT - 50)
@@ -53,24 +74,63 @@ class GameEngine:
         self.paddle.move(dx, WIDTH)
 
     def handle_keydown(self, key):
-        pass
+        if self.game_over and key == pygame.K_r:
+            self.__init__()
 
     def update(self):
+        if self.game_over:
+            return
+
         self.ball.update()
         self.ball.bounce_off_walls(WIDTH)
 
         if self.ball.get_rect().colliderect(self.paddle.get_rect()) and self.ball.vy > 0:
             self.ball.bounce_off_paddle(self.paddle.get_rect())
 
+        
         for brick in self.bricks:
             if handle_ball_brick_collision(self.ball, brick):
-                brick.hits_remaining -= 1   # BUG: tracked, but never actually checked to remove the brick
+                if brick.brick_type != "unbreakable":
+                    brick.hits_remaining -= 1
+
+                    if brick.hits_remaining <= 0:
+                        self.bricks.remove(brick)
+
+                        self.combo += 1
+                        self.combo_multiplier = min(self.combo, 5)
+                        self.score += 10 * self.combo_multiplier
+
                 break
 
+
         if self.ball.is_below(HEIGHT):
-            self._reset_ball()
+            self.combo = 0
+            self.combo_multiplier = 1
+            self.lives -= 1
+
+            if self.lives <= 0:
+                self.game_over = True
+            else:
+                self._reset_ball()
 
     def draw(self, surface, font):
         from game import renderer
+
         renderer.draw_scene(surface, self.paddle, self.ball, self.bricks)
-        renderer.draw_text(surface, font, f"Bricks left: {len(self.bricks)}", (10, 10))
+        renderer.draw_text(
+            surface, font, f"Bricks left: {len(self.bricks)}", (10, 10)
+        )
+        renderer.draw_text(
+            surface, font, f"Lives: {self.lives}", (10, 35)
+        )
+        renderer.draw_text(
+            surface, font, f"Score: {self.score}", (10, 60)
+        )
+        renderer.draw_text(
+            surface, font, f"Combo: x{self.combo_multiplier}", (10, 85)
+        )
+
+        if self.game_over:
+            renderer.draw_banner(
+                surface, font, "GAME OVER - Press R to Restart"
+            )
